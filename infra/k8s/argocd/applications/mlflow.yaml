@@ -1,5 +1,5 @@
 # MLflow — plain 매니페스트 디렉터리. sync-wave 2 (PostgreSQL `mlflow` DB 이후).
-# Secret(mlflow-secret)은 Git 밖 — 사전 주입 필요(apps/mlflow/README.md).
+# Secret(mlflow-secret)은 Git 밖 — 사전 주입 필요(apps/platform/mlflow/README.md).
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -12,9 +12,10 @@ metadata:
 spec:
   project: default
   source:
+    # 레포의 매니페스트 참조
     repoURL: https://github.com/f-lab-edu/Market-Layer-Platform.git
     targetRevision: develop
-    path: infra/k8s/apps/mlflow
+    path: infra/k8s/apps/platform/mlflow
   destination:
     server: https://kubernetes.default.svc
     namespace: platform

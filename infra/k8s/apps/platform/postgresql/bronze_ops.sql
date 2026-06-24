@@ -2,7 +2,7 @@
 -- Bronze 운영 메타데이터 (parquet이 아니라 DB에 둠 — 작고 자주 갱신, 모니터링이 쿼리)
 -- 대상 DB: audit  (※ audit DB 용도가 다르면 \connect 대상을 바꿀 것)
 -- 적용(라이브 PG는 이미 초기화돼 있어 수동 적용):
---   kubectl -n platform cp infra/k8s/apps/postgresql/bronze_ops.sql platform/postgresql-0:/tmp/bronze_ops.sql
+--   kubectl -n platform cp infra/k8s/apps/platform/postgresql/bronze_ops.sql platform/postgresql-0:/tmp/bronze_ops.sql
 --   kubectl -n platform exec -it postgresql-0 -- psql -U admin -d audit -f /tmp/bronze_ops.sql
 -- =====================================================================
 \connect audit

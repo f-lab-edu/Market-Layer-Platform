@@ -1,35 +1,59 @@
-# Kubernetes bootstrap
+# Kubernetes Bootstrap
 
-## 기존 local-path PV 보호
+애플리케이션 배포 전에 네임스페이스, StorageClass, ingress controller를 준비한다.
 
-StorageClass의 `reclaimPolicy: Retain`은 새로 프로비저닝되는 PV에 적용된다. 기존 PV는 현재 정책을
-확인하고 데이터 PV만 개별적으로 `Retain`으로 변경한다.
+## 0. 네임스페이스
 
-라이브 StorageClass가 `Delete`인 상태에서 `Retain`으로 변경되지 않으면 StorageClass를 삭제 후
-동일 이름으로 재생성해야 할 수 있다. StorageClass 삭제 자체는 기존 PV/PVC를 삭제하지 않지만,
-재생성 전까지 신규 PVC 프로비저닝을 중단한다. 기존 PV가 모두 `Retain`인지 먼저 확인한다.
+생명주기 계층(platform/pipeline/serving) 네임스페이스를 먼저 생성한다(lifecycle 라벨 포함).
+앱들도 `CreateNamespace=true`를 갖지만 그건 라벨 없는 ns를 만들 뿐이므로, 이 정의를 먼저 적용한다.
 
 ```sh
-kubectl get pv \
-  -o custom-columns=NAME:.metadata.name,CLAIM:.spec.claimRef.namespace/.spec.claimRef.name,RECLAIM:.spec.persistentVolumeReclaimPolicy
-
-kubectl patch pv <pv-name> \
-  -p '{"spec":{"persistentVolumeReclaimPolicy":"Retain"}}'
+kubectl apply -f infra/k8s/namespaces.yaml
+kubectl get ns platform pipeline serving --show-labels
 ```
 
-PostgreSQL, MLflow artifact, datalake PVC에 연결된 PV가 모두 `Retain`인지 확인한 뒤 ArgoCD 자동
-동기화를 활성화한다.
+## 1. Local Path Provisioner
 
-## ArgoCD 최초 인수
+노드 로컬 디스크를 사용하는 기본 StorageClass를 설치한다.
 
-각 child Application은 기존 Helm/수동 배포 리소스를 안전하게 인수하도록 automated sync를
-비활성화한 상태다. 다음 순서로 diff와 수동 sync를 수행한다.
+```sh
+kubectl apply -f infra/k8s/bootstrap/storageclass/local-path.yaml
+kubectl get storageclass
+kubectl -n local-path-storage rollout status deployment/local-path-provisioner
+```
 
-1. `storageclass`
-2. `postgresql`, `datalake`, `ingress-nginx`
-3. `mlflow`
-4. `airflow`
+`local-path`가 default StorageClass이고 reclaim policy가 `Retain`인지 확인한다.
 
-Airflow는 기존 Fernet/API/JWT/Broker/Redis/metadata Secret의 UID와 checksum이 유지되는지 반드시
-확인한다. PostgreSQL은 `postgres-data-postgresql-0` PVC와 연결 PV의 UID가 유지되어야 한다.
-검증 후 각 Application에 `automated.prune=true`, `automated.selfHeal=true`를 활성화한다.
+## 2. ingress-nginx
+
+Helm chart 4.15.1을 NodePort 방식으로 설치한다.
+
+```sh
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+  --version 4.15.1 \
+  --namespace ingress-nginx \
+  --create-namespace \
+  -f infra/k8s/bootstrap/ingress-nginx/values.yaml
+```
+
+```sh
+kubectl -n ingress-nginx rollout status deployment/ingress-nginx-controller
+kubectl -n ingress-nginx get service ingress-nginx-controller
+```
+
+HTTP는 `<node-ip>:30080`, HTTPS는 `<node-ip>:30443`으로 접근한다.
+
+## 3. 애플리케이션 배포
+
+각 애플리케이션 README에 따라 Secret을 먼저 생성한다. 배포 방식은 하나를 선택한다.
+
+- Argo CD: `infra/k8s/argocd/root-app.yaml`을 적용하고 sync wave 순서로 배포
+- 직접 배포: PostgreSQL/data lake를 먼저 적용하고 MLflow/Airflow를 배포
+
+## 운영 제약
+
+- local-path 데이터는 노드 장애 시 자동 복제되지 않는다.
+- Secret은 Git 외부에서 관리한다.
+- stateful PV는 `Retain` 정책을 사용한다.

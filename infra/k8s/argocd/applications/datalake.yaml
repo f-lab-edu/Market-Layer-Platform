@@ -1,4 +1,4 @@
-# 데이터 레이크 PVC — sync-wave 1 (airflow(wave 2)가 마운트하기 전에 PVC 존재).
+# 데이터 레이크 PVC — sync-wave 1 (airflow(wave 2)가 마운트하기 전에 PVC 존재해야 함)
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -10,10 +10,11 @@ metadata:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
+  # 레포의 PVC 참조
   source:
     repoURL: https://github.com/f-lab-edu/Market-Layer-Platform.git
     targetRevision: develop
-    path: infra/k8s/apps/datalake
+    path: infra/k8s/apps/platform/datalake
   destination:
     server: https://kubernetes.default.svc
     namespace: platform

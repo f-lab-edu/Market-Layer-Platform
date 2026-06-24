@@ -35,6 +35,7 @@ spec:
       labels:
         app: mlflow
     spec:
+      automountServiceAccountToken: false
       # nodeSelector 없음 — artifact PVC(local-path)가 Pod를 볼륨 노드에 자동 핀
       containers:
         - name: mlflow
@@ -50,8 +51,8 @@ spec:
                 --backend-store-uri "$MLFLOW_BACKEND_STORE_URI" \
                 --serve-artifacts \
                 --artifacts-destination /mlflow/artifacts \
-                --allowed-hosts "mlflow.local,localhost:*,127.0.0.1:*,mlflow.platform.svc.cluster.local:*" \
-                --cors-allowed-origins "http://mlflow.local,http://localhost:5000,http://127.0.0.1:5000"
+                --allowed-hosts "localhost:*,127.0.0.1:*,mlflow.platform.svc.cluster.local:*" \
+                --cors-allowed-origins "http://localhost:5000,http://127.0.0.1:5000"
           ports:
             - containerPort: 5000
               name: http
@@ -80,9 +81,9 @@ spec:
                   name: mlflow-secret
                   key: MLFLOW_BACKEND_STORE_URI
             - name: MLFLOW_SERVER_ALLOWED_HOSTS
-              value: "mlflow.local,localhost,127.0.0.1,192.168.*"
+              value: "localhost,127.0.0.1,mlflow.platform.svc.cluster.local"
             - name: MLFLOW_SERVER_CORS_ALLOWED_ORIGINS
-              value: "http://mlflow.local,http://localhost:5000,http://127.0.0.1:5000"
+              value: "http://localhost:5000,http://127.0.0.1:5000"
           volumeMounts:
             - name: mlflow-artifacts
               mountPath: /mlflow/artifacts
@@ -90,9 +91,11 @@ spec:
             requests:
               cpu: 100m
               memory: 256Mi
+              ephemeral-storage: 512Mi
             limits:
               cpu: 500m
               memory: 2Gi
+              ephemeral-storage: 2Gi
       volumes:
         - name: mlflow-artifacts
           persistentVolumeClaim:

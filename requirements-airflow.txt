@@ -1,0 +1,10 @@
+fredapi>=0.5.2,<1
+pandas>=2.2,<3
+praw>=7.8,<8
+psycopg[binary]>=3.2,<4
+pyarrow>=18,<19
+pydantic>=2.10,<3
+python-dotenv>=1,<2
+requests>=2.32,<3
+yfinance>=0.2.50,<1
+

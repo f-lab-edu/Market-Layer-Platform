@@ -1,55 +1,72 @@
-# PostgreSQL (pgvector) — platform 네임스페이스
+# PostgreSQL with pgvector
 
-MLflow/Airflow 메타DB + Feast online + RAG 벡터 저장. 단일 PostgreSQL 인스턴스 안에서 DB를 분리한다
-(라이브: `airflow` / `mlflow` / `feast` / `app` / `vector` / `audit` / `mlops`).
-**Bronze/Silver는 PostgreSQL이 아니라 parquet 데이터 레이크에 저장**(`apps/datalake/`). PG엔 Bronze 운영 메타데이터(`audit.bronze.*`)만.
+> ⚠️ **범위: 신규(빈) 클러스터 부트스트랩 기준.** Secret 생성·`init_db.sql` 실행은 빈 데이터 볼륨 전용이다.
+> 이미 운영 중인 클러스터를 GitOps로 넘기려면 **`docs/gitops-adoption-runbook.md`**를 따른다(기존 `postgres-secret`·PVC 재사용, StatefulSet 인수는 롤링 1회).
 
-- 이미지: `pgvector/pgvector:pg16`
-- Service FQDN: `postgresql.platform.svc.cluster.local:5432` (ClusterIP)
-- 노드: `node-role=data`인 worker1
-- 스토리지: `local-path` StorageClass, 10Gi PVC
-- superuser: `admin` (라이브 클러스터 기준)
+Airflow·MLflow metadata, Feast online store, 애플리케이션 데이터와 벡터 데이터를 저장한다.
 
-## ⚠️ 현재 클러스터에 PostgreSQL이 이미 떠 있음
+- namespace: `platform`
+- image: `pgvector/pgvector:pg16`
+- service: `postgresql:5432`
+- StorageClass: `local-path`
+- PVC template: `postgres-data`, 10Gi
+- 실제 PVC: `postgres-data-postgresql-0`
+- node selector: `node-role=data`
 
-`postgresql-0`이 이미 Running이고, **그 데이터 디렉터리는 이미 초기화**되어 있다. 따라서
-`init_db.sql`의 `/docker-entrypoint-initdb.d` 자동 실행은 **다시 일어나지 않는다**(initdb는 빈
-디렉터리에서만 실행). 즉 이 매니페스트를 GitOps로 적용해도 기존 데이터/DB는 그대로 보존된다.
+Bronze/Silver 원본은 PostgreSQL이 아니라 parquet data lake에 저장한다.
 
-→ **Bronze raw는 PostgreSQL에 안 들어간다**(parquet 데이터 레이크 사용 — `apps/datalake/` 참조).
-PostgreSQL엔 Bronze **운영 메타데이터(ingestion_log/freshness)**만 `audit` DB에 둔다.
+## 사전 조건
 
-```sh
-# 1) 기존 DB 목록 확인 (라이브: airflow/mlflow/feast/app/vector/audit/mlops)
-kubectl -n platform exec -it postgresql-0 -- psql -U admin -d postgres -c "\l"
-
-# 2) Bronze 운영 메타데이터를 audit DB에 적용
-kubectl -n platform cp infra/k8s/apps/postgresql/bronze_ops.sql platform/postgresql-0:/tmp/bronze_ops.sql
-kubectl -n platform exec -it postgresql-0 -- psql -U admin -d audit -f /tmp/bronze_ops.sql
-```
-
-## 기존 클러스터 ArgoCD 인수
-
-- 기존 Secret `postgres-secret`과 PVC `postgres-data-postgresql-0`을 그대로 재사용한다.
-- PVC template 이름은 StatefulSet immutable field이므로 `postgres-data`를 변경하지 않는다.
-- 기존 데이터는 PVC 루트에 있으므로 `PGDATA`를 별도 하위 디렉터리로 지정하지 않는다.
-- 최초 sync 전후 PVC/PV UID가 동일한지 확인한다.
-
-## 신규 클러스터일 때만 — Secret 주입 + DB 부트스트랩 (Git 밖)
-
-빈 클러스터에 처음 띄울 때만 해당. `init_db.sql`이 7개 DB를 생성(라이브엔 이미 존재).
+data node에 label을 추가하고 PostgreSQL Secret을 생성한다.
 
 ```sh
+kubectl label node <data-node> node-role=data
+kubectl create namespace platform --dry-run=client -o yaml | kubectl apply -f -
 kubectl create secret generic postgres-secret -n platform \
   --from-literal=POSTGRES_USER=admin \
-  --from-literal=POSTGRES_PASSWORD='<비밀번호>' \
+  --from-literal=POSTGRES_PASSWORD='<password>' \
   --from-literal=POSTGRES_DB=postgres
 ```
 
-## 알아둘 것
+## 배포
 
-- `init_db.sql`은 **부트스트랩 참조**(라이브 PG는 이미 초기화됨 → 자동 실행 안 일어남).
-- StatefulSet의 PVC template에는 ArgoCD prune/delete 방지 annotation을 적용하고 StorageClass는 `Retain`으로 설정한다.
-- Bronze/Silver = parquet 레이크, Gold = Feast(offline parquet + online `feast` DB). PG엔 bronze raw 테이블 없음.
-- `bronze_ops.sql`의 대상 DB는 `audit` 가정 — 용도가 다르면 `\connect` 대상을 바꿀 것.
-- v1은 **DB 단위 분리**까지만(소유자는 superuser `admin` 공용). 서비스별 전용 role 분리는 후속.
+```sh
+kubectl apply -k infra/k8s/apps/platform/postgresql
+kubectl -n platform rollout status statefulset/postgresql
+```
+
+### PVC 보호 (Git이 아니라 PVC에 직접 부여)
+
+`volumeClaimTemplates`는 immutable이라 prune/delete 보호 annotation을 매니페스트에 넣으면 기존
+StatefulSet 인수 시 sync가 거부된다. 따라서 보호는 **기존 PVC에 직접** 부여한다.
+
+```sh
+kubectl -n platform annotate pvc postgres-data-postgresql-0 \
+  argocd.argoproj.io/sync-options=Prune=false,Delete=false --overwrite
+```
+
+빈 데이터 볼륨에서 최초 실행할 때 `init_db.sql`이 서비스별 DB와 vector extension을 생성한다.
+Bronze 수집 상태 테이블은 다음과 같이 적용한다.
+
+```sh
+kubectl -n platform cp \
+  infra/k8s/apps/platform/postgresql/bronze_ops.sql \
+  postgresql-0:/tmp/bronze_ops.sql
+kubectl -n platform exec postgresql-0 -- \
+  psql -U admin -d audit -f /tmp/bronze_ops.sql
+```
+
+## 검증
+
+```sh
+kubectl -n platform get pod,svc -l app=postgresql
+kubectl -n platform get pvc postgres-data-postgresql-0
+kubectl -n platform exec postgresql-0 -- psql -U admin -d postgres -c '\l'
+kubectl -n platform exec postgresql-0 -- psql -U admin -d vector -c '\dx'
+```
+
+## 운영 제약
+
+- init SQL은 빈 데이터 볼륨의 최초 부팅에서만 실행된다.
+- PVC retention policy와 Argo CD prune/delete 보호를 적용한다.
+- local-path는 단일 노드 로컬 스토리지이므로 별도 백업이 필요하다.

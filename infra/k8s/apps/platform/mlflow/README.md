@@ -1,28 +1,40 @@
-# MLflow Tracking Server — platform 네임스페이스
+# MLflow Tracking Server
 
-- Service FQDN: `mlflow.platform.svc.cluster.local:5000`
-- backend store: PostgreSQL `mlflow` DB
-- artifact store: 로컬 PVC `mlflow-artifacts-pvc` `/mlflow/artifacts` (20Gi, `local-path`)
-- 노드: worker1 (PVC 자동 핀)
-- 이미지: `ghcr.io/mlflow/mlflow:v3.10.0-full`
-- 접근: `kubectl -n platform port-forward svc/mlflow 5000:5000` → http://localhost:5000
+> ⚠️ **범위: 신규(빈) 클러스터 부트스트랩 기준.** Secret 생성 단계는 빈 클러스터 전용이다.
+> 이미 운영 중인 클러스터를 GitOps로 넘기려면 **`docs/gitops-adoption-runbook.md`**를 따른다(기존 `mlflow-secret`·PVC 재사용).
 
-## 사전 준비 — Secret 주입 (Git 밖)
+실험 메타데이터는 PostgreSQL에, artifact는 local-path PVC에 저장한다.
 
-backend-store-uri 전체를 secret 값으로 주입(평문 URI를 Git에 두지 않음). 키 이름은 `MLFLOW_BACKEND_STORE_URI`.
+- namespace: `platform`
+- image: `ghcr.io/mlflow/mlflow:v3.10.0-full`
+- service: `mlflow:5000`
+- backend DB: `postgresql.platform.svc.cluster.local:5432/mlflow`
+- artifact PVC: `mlflow-artifacts-pvc` 20Gi
+
+## 사전 조건
+
+PostgreSQL의 `mlflow` DB와 backend URI Secret을 준비한다.
 
 ```sh
 kubectl create namespace platform --dry-run=client -o yaml | kubectl apply -f -
-
 kubectl create secret generic mlflow-secret -n platform \
-  --from-literal=MLFLOW_BACKEND_STORE_URI='postgresql://admin:<비밀번호>@postgresql.platform.svc.cluster.local:5432/mlflow'
+  --from-literal=MLFLOW_BACKEND_STORE_URI='postgresql://admin:<password>@postgresql.platform.svc.cluster.local:5432/mlflow'
 ```
 
-## 알아둘 것
+## 배포 및 검증
 
-- `-full` 이미지에 PostgreSQL 드라이버가 포함되어 있어 런타임 `pip install`은 하지 않는다.
-- `/health` 기반 startup/readiness/liveness probe로 기동 지연과 장애를 구분한다.
-- 리소스는 라이브와 동일하게 request `100m/256Mi`, limit `500m/2Gi`로 둔다.
-- backend DB(`mlflow`)는 PostgreSQL에 이미 존재해야 한다(현재 클러스터 PG는 별도 init으로 구성됨).
-- artifact PVC는 ArgoCD prune/delete 방지 annotation을 사용하고 StorageClass는 `Retain` 정책을 사용한다.
-- `strategy`는 RWO PVC 보호를 위해 `Recreate`로 둔다.
+```sh
+kubectl apply -f infra/k8s/apps/platform/mlflow/mlflow.yaml
+kubectl -n platform rollout status deployment/mlflow
+kubectl -n platform get pod,svc -l app=mlflow
+kubectl -n platform get pvc mlflow-artifacts-pvc
+kubectl -n platform port-forward svc/mlflow 5000:5000
+```
+
+MLflow UI는 `http://localhost:5000`에서 확인한다. Argo CD 사용 시 `mlflow` Application을 sync한다.
+
+## 운영 제약
+
+- Deployment는 RWO PVC의 중복 마운트를 방지하기 위해 `Recreate` 전략을 사용한다.
+- `/health` 기반 startup/readiness/liveness probe를 사용한다.
+- artifact PVC에는 Argo CD prune/delete 보호가 적용된다.

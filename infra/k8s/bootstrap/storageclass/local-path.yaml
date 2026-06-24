@@ -104,6 +104,13 @@ spec:
                   fieldPath: metadata.namespace
             - name: CONFIG_MOUNT_PATH
               value: /etc/config/
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
       volumes:
         - name: config-volume
           configMap:
@@ -138,6 +145,9 @@ data:
   setup: |-
     #!/bin/sh
     set -eu
+    # 0777: 컨테이너가 임의 UID(postgres·airflow 50000 등)로 떠도 쓰기 가능하도록.
+    # 0700/0770으로 낮추면 root가 만든 디렉터리를 non-root 컨테이너가 못 써 기동 실패.
+    # 격리: $VOL_DIR은 PVC마다 고유 경로 + 단일노드 단일테넌트라 노드 외 노출 없음(허용 위험).
     mkdir -m 0777 -p "$VOL_DIR"
   teardown: |-
     #!/bin/sh
@@ -156,5 +166,5 @@ data:
           effect: NoSchedule
       containers:
         - name: helper-pod
-          image: busybox
+          image: busybox:1.36
           imagePullPolicy: IfNotPresent

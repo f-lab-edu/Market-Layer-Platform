@@ -2,11 +2,7 @@
 # Namespace: platform / Service FQDN: postgresql.platform.svc.cluster.local:5432
 # Secret(postgres-secret)은 Git 밖 — 기존 라이브 Secret을 재사용한다.
 # 초기화 SQL(init_db.sql)은 ConfigMap(postgres-init-scripts)으로 생성된다.
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: platform
----
+# Namespace는 infra/k8s/namespaces.yaml에서 단일 정의(여기서 중복 생성 안 함).
 apiVersion: v1
 kind: Service
 metadata:
@@ -79,11 +75,11 @@ spec:
         - name: init-scripts
           configMap:
             name: postgres-init-scripts
+  # volumeClaimTemplates는 immutable — 라이브 StatefulSet과 완전히 동일해야 인수 시 sync 거부 안 남.
+  # (PVC prune/delete 보호 annotation은 기존 PVC에 직접 부여: README 참고)
   volumeClaimTemplates:
     - metadata:
         name: postgres-data
-        annotations:
-          argocd.argoproj.io/sync-options: Prune=false,Delete=false
       spec:
         accessModes: ["ReadWriteOnce"]
         storageClassName: local-path

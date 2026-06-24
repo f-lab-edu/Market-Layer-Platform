@@ -12,13 +12,15 @@ metadata:
 spec:
   project: default
   sources:
+    # Helm Chart 참조
     - repoURL: https://airflow.apache.org
       chart: airflow
       targetRevision: 1.22.0
       helm:
         releaseName: airflow
         valueFiles:
-          - $values/infra/k8s/apps/airflow/values.yaml
+          - $values/infra/k8s/apps/platform/airflow/values.yaml
+    # 레포의 values.yaml 참조
     - repoURL: https://github.com/f-lab-edu/Market-Layer-Platform.git
       targetRevision: develop
       ref: values
@@ -26,6 +28,7 @@ spec:
     server: https://kubernetes.default.svc
     namespace: platform
   syncPolicy:
-    # 기존 Helm release 인수 전에는 수동 sync한다. Secret/PVC 동일성 검증 후 automated를 활성화한다.
+    # 기존 Helm release 인수 전에는 수동 sync.
+    # Secret/PVC 동일성 검증 후 automated를 활성화.
     syncOptions:
       - CreateNamespace=true
