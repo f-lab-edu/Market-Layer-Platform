@@ -1,0 +1,33 @@
+# ingress-nginx — Helm 차트 + 멀티소스($values)로 레포의 values.yaml 참조.
+# NodePort 방식(MetalLB 미사용): 노드IP:30080/30443으로 접근.
+# 차트 버전은 확인 후 갱신 가능: https://kubernetes.github.io/ingress-nginx
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ingress-nginx
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    - repoURL: https://kubernetes.github.io/ingress-nginx
+      chart: ingress-nginx
+      targetRevision: 4.15.1
+      helm:
+        releaseName: ingress-nginx
+        valueFiles:
+          - $values/infra/k8s/bootstrap/ingress-nginx/values.yaml
+    - repoURL: https://github.com/f-lab-edu/Market-Layer-Platform.git
+      targetRevision: develop
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ingress-nginx
+  syncPolicy:
+    # 기존 Helm release 인수 전에는 수동 sync한다.
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

@@ -1,12 +1,11 @@
-# MLflow — plain 매니페스트 디렉터리. sync-wave 2 (PostgreSQL `mlflow` DB 이후).
-# Secret(mlflow-secret)은 Git 밖 — 사전 주입 필요(apps/mlflow/README.md).
+# local-path-provisioner + default StorageClass (sync-wave 0 — 모든 PVC 선결조건)
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: mlflow
+  name: storageclass
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-wave: "0"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -14,11 +13,12 @@ spec:
   source:
     repoURL: https://github.com/f-lab-edu/Market-Layer-Platform.git
     targetRevision: develop
-    path: infra/k8s/apps/mlflow
+    path: infra/k8s/bootstrap/storageclass
   destination:
     server: https://kubernetes.default.svc
-    namespace: platform
+    namespace: local-path-storage
   syncPolicy:
-    # 기존 Deployment/PVC 인수 전에는 수동 sync한다.
+    # 라이브 StorageClass의 Delete -> Retain 변경을 확인한 뒤 수동 sync한다.
     syncOptions:
       - CreateNamespace=true
+      - ServerSideApply=true

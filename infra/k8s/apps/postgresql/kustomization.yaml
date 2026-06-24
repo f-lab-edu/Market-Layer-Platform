@@ -1,0 +1,18 @@
+# ArgoCD가 이 디렉터리를 kustomize로 인식.
+# init_db.sql → ConfigMap(postgres-init-scripts) 자동 생성 → StatefulSet이 마운트.
+# disableNameSuffixHash=true: StatefulSet이 고정 이름으로 참조하도록 해시 접미사 제거.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: platform
+
+resources:
+  - postgresql.yaml
+
+configMapGenerator:
+  - name: postgres-init-scripts
+    files:
+      - init_db.sql
+
+generatorOptions:
+  disableNameSuffixHash: true

@@ -1,0 +1,24 @@
+# PostgreSQL (pgvector) — kustomize 디렉터리. sync-wave 1 (storageclass 이후).
+# 기존 Secret(postgres-secret)과 PVC(postgres-data-postgresql-0)를 재사용한다.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: postgresql
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/f-lab-edu/Market-Layer-Platform.git
+    targetRevision: develop
+    path: infra/k8s/apps/postgresql
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: platform
+  syncPolicy:
+    # 기존 StatefulSet/PVC 인수 전에는 수동 sync한다.
+    syncOptions:
+      - CreateNamespace=true

@@ -1,0 +1,31 @@
+# Airflow — 공식 Helm 차트 + 멀티소스($values)로 레포의 values.yaml 참조. sync-wave 2.
+# targetRevision(차트 버전)은 현재 설치본과 맞출 것: `helm -n airflow list` 확인.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: airflow
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    - repoURL: https://airflow.apache.org
+      chart: airflow
+      targetRevision: 1.22.0
+      helm:
+        releaseName: airflow
+        valueFiles:
+          - $values/infra/k8s/apps/airflow/values.yaml
+    - repoURL: https://github.com/f-lab-edu/Market-Layer-Platform.git
+      targetRevision: develop
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: platform
+  syncPolicy:
+    # 기존 Helm release 인수 전에는 수동 sync한다. Secret/PVC 동일성 검증 후 automated를 활성화한다.
+    syncOptions:
+      - CreateNamespace=true
