@@ -7,12 +7,14 @@ kind: Namespace
 metadata:
   name: local-path-storage
 ---
+# local-path-provisioner service account 생성
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: local-path-provisioner-service-account
   namespace: local-path-storage
 ---
+# local-path-provisioner role 생성
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -23,6 +25,7 @@ rules:
     resources: ["pods"]
     verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
 ---
+# local-path-provisioner role binding 생성
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -37,6 +40,7 @@ subjects:
     name: local-path-provisioner-service-account
     namespace: local-path-storage
 ---
+# local-path-provisioner cluster role 생성
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -55,6 +59,7 @@ rules:
     resources: ["storageclasses"]
     verbs: ["get", "list", "watch"]
 ---
+# local-path-provisioner cluster role binding 생성
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -68,6 +73,7 @@ subjects:
     name: local-path-provisioner-service-account
     namespace: local-path-storage
 ---
+# local-path-provisioner deployment 생성
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -83,6 +89,7 @@ spec:
       labels:
         app: local-path-provisioner
     spec:
+      # local-path-provisioner service account 사용(Role/RoleBinding 권한 부여되어 있음)
       serviceAccountName: local-path-provisioner-service-account
       containers:
         - name: local-path-provisioner
@@ -94,6 +101,7 @@ spec:
             - start
             - --config
             - /etc/config/config.json
+          # configmap 마운트
           volumeMounts:
             - name: config-volume
               mountPath: /etc/config/
@@ -127,6 +135,7 @@ provisioner: rancher.io/local-path
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Retain
 ---
+# local-path-provisioner configmap 생성
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -142,6 +151,7 @@ data:
         }
       ]
     }
+  # 볼륨 생성 시
   setup: |-
     #!/bin/sh
     set -eu
@@ -149,10 +159,12 @@ data:
     # 0700/0770으로 낮추면 root가 만든 디렉터리를 non-root 컨테이너가 못 써 기동 실패.
     # 격리: $VOL_DIR은 PVC마다 고유 경로 + 단일노드 단일테넌트라 노드 외 노출 없음(허용 위험).
     mkdir -m 0777 -p "$VOL_DIR"
+  # 볼륨 삭제 시 
   teardown: |-
     #!/bin/sh
     set -eu
     rm -rf "$VOL_DIR"
+  # 스크립트 실행용 임시 Pod
   helperPod.yaml: |-
     apiVersion: v1
     kind: Pod

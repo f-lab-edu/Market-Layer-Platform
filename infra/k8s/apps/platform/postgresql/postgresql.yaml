@@ -3,6 +3,8 @@
 # Secret(postgres-secret)은 Git 밖 — 기존 라이브 Secret을 재사용한다.
 # 초기화 SQL(init_db.sql)은 ConfigMap(postgres-init-scripts)으로 생성된다.
 # Namespace는 infra/k8s/namespaces.yaml에서 단일 정의(여기서 중복 생성 안 함).
+
+## Service
 apiVersion: v1
 kind: Service
 metadata:
@@ -18,6 +20,9 @@ spec:
       port: 5432
       targetPort: 5432
 ---
+
+## StatefulSet
+## 영구 디스크가 필요하기 때문에 StatefulSet으로 생성
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -26,6 +31,7 @@ metadata:
 spec:
   serviceName: postgresql
   replicas: 1
+  # 영구 디스크가 필요하기 때문에 Retain 정책을 사용
   persistentVolumeClaimRetentionPolicy:
     whenDeleted: Retain
     whenScaled: Retain
@@ -37,28 +43,40 @@ spec:
       labels:
         app: postgresql
     spec:
+      # data 노드에만 PostgreSQL Pod를 배치
       nodeSelector:
         node-role: data
       containers:
         - name: postgresql
+          # PostgreSQL + pgvector 확장 포함 이미지 사용
           image: pgvector/pgvector:pg16
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5432
               name: postgresql
+          # Secret 마운트
+          # POSTGRES_USER
+          # POSTGRES_PASSWORD
+          # POSTGRES_DB 등 주입
           envFrom:
             - secretRef:
                 name: postgres-secret
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
+            # init_db.sql 파일 마운트
             - name: init-scripts
               mountPath: /docker-entrypoint-initdb.d
+          # PostgreSQL 준비 확인 프로브
+          # startup은 사용하지 않음.
+
+          # readinessProbe: 작업을 시작하기 전에 준비되었는지 확인
           readinessProbe:
             exec:
               command: ["pg_isready", "-U", "admin"]
             initialDelaySeconds: 10
             periodSeconds: 10
+          # livenessProbe: 작업을 시작한 후 살아있는지 확인
           livenessProbe:
             exec:
               command: ["pg_isready", "-U", "admin"]
