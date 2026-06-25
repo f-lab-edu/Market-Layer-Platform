@@ -9,9 +9,9 @@ ARG CONSTRAINTS_URL=https://raw.githubusercontent.com/apache/airflow/constraints
 USER airflow
 
 COPY --chown=airflow:root requirements-airflow.txt /tmp/requirements-airflow.txt
-RUN pip install --no-cache-dir --constraint "${CONSTRAINTS_URL}" -r /tmp/requirements-airflow.txt
+RUN pip install --no-cache-dir --only-binary=:all: --constraint "${CONSTRAINTS_URL}" -r /tmp/requirements-airflow.txt
 
 COPY --chown=airflow:root pyproject.toml README.md /opt/airflow/market-layer/
 COPY --chown=airflow:root src /opt/airflow/market-layer/src
-RUN pip install --no-cache-dir --no-deps /opt/airflow/market-layer
-
+RUN pip wheel --no-cache-dir --no-deps --no-build-isolation --wheel-dir /tmp/market-layer-dist /opt/airflow/market-layer \
+    && pip install --no-cache-dir --no-deps --only-binary=:all: /tmp/market-layer-dist/*.whl
