@@ -1,0 +1,26 @@
+# app-of-apps 루트. argocd/applications/ 디렉터리의 모든 Application을 ArgoCD가 관리.
+# 부트스트랩: ArgoCD 설치 후 `kubectl apply -f infra/k8s/argocd/root-app.yaml` 1회.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-app
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/f-lab-edu/Market-Layer-Platform.git
+    targetRevision: develop
+    path: infra/k8s/argocd/applications
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

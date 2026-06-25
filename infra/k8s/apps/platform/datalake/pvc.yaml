@@ -1,0 +1,20 @@
+# Bronze/Silver 데이터 레이크 PVC — platform 네임스페이스
+# parquet 파일이 여기 쌓임. local-path(RWO) → worker1 로컬 디스크에 저장.
+# CeleryExecutor라 태스크는 worker에서 실행 → Airflow worker Pod에 마운트되어 같은 노드에 바인딩됨.
+# 주의: RWO·노드 로컬·비복제 → 의도된 단일 장애점. worker를 2개 이상으로 스케일하면 RWX/MinIO 필요.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: datalake-pvc
+  namespace: platform
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  labels:
+    app: market-layer
+    tier: datalake
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 20Gi          # 시작값. backfill 규모 보고 조정.

@@ -1,0 +1,27 @@
+# local-path-provisioner + default StorageClass (sync-wave 0 — 모든 PVC 선행조건)
+# 온프레미스 kubeadm 클러스터엔 기본 동적 프로비저너가 없어 PVC가 Pending 상태.
+# 이 Application이 Rancher local-path-provisioner를 올려 PVC 요청 시 노드 로컬 디스크에 PV를 생성
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: storageclass
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  # 레포의 매니페스트 참조
+  source:
+    repoURL: https://github.com/f-lab-edu/Market-Layer-Platform.git
+    targetRevision: develop
+    path: infra/k8s/bootstrap/storageclass
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: local-path-storage
+  syncPolicy:
+    # 라이브 StorageClass의 Delete -> Retain 변경을 확인한 뒤 수동 sync한다.
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

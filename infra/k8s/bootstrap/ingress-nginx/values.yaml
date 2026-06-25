@@ -1,0 +1,27 @@
+# ingress-nginx Helm values (ArgoCD Application의 $values 멀티소스로 참조)
+# NodePort 방식 — MetalLB 미사용. 노드IP:30080(http)/30443(https)로 접근.
+# (예: http://192.168.50.99:30080) 외부 노출이 필요해지면 라우터 포트포워딩으로 연결.
+controller:
+  kind: Deployment
+  replicaCount: 1
+
+  # nodeSelector 없음 — node-role 라벨 스킴 폐기. NodePort라 어느 노드 IP로도 접근 가능.
+
+  service:
+    type: NodePort
+    nodePorts:
+      http: 30080
+      https: 30443
+    # NodePort에서 아무 노드 IP로 접근하려면 Cluster(기본값) 사용.
+    # Local은 컨트롤러 Pod가 뜬 노드에서만 응답하므로 단일 replica 환경에선 부적합.
+    externalTrafficPolicy: Cluster
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 90Mi
+
+  ingressClassResource:
+    name: nginx
+    default: false
+    enabled: true

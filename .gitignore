@@ -1,1 +1,33 @@
-project-plan-submission.md
+# ---- secrets / env ----
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets/
+
+# ---- python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# ---- data / artifacts (Git 밖) ----
+data/
+*.parquet
+mlruns/
+*.db
+
+# ---- os / editor ----
+.DS_Store
+.idea/
+.vscode/
+
+
+# ---- docs ----
+docs/

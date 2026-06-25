@@ -1,0 +1,112 @@
+# Apache Airflow Helm values (공식 차트 1.22.0 / Airflow 3.2.2) — 라이브 platform ns와 reconcile.
+# 라이브 미러링을 기반으로 하되 다음 운영 보완을 적용:
+#   1) 메타DB 인라인 평문 -> Secret 외부화 (Git에 평문 금지)
+#   2) DAG gitSync 추가 (DAG 파일만 동기화, 애플리케이션 코드는 커스텀 이미지에 포함)
+#   3) Airflow 3 api-server request/limit 명시
+# 그 외(executor=CeleryExecutor, nodeSelector 없음)는 라이브와 동일.
+
+executor: CeleryExecutor
+
+# Airflow 런타임 이미지는 repo 코드와 고정 의존성을 포함한다.
+# develop은 mutable tag이므로 개발 단계에서는 Always로 재 pull한다.
+# 운영 릴리스는 develop-<sha> 같은 immutable tag와 IfNotPresent 조합으로 전환한다.
+images:
+  airflow:
+    repository: ghcr.io/f-lab-edu/market-layer-platform-airflow
+    tag: develop
+    pullPolicy: Always
+
+# GHCR package가 private이면 platform namespace에 docker-registry Secret을 만들고
+# 아래 imagePullSecrets를 활성화한다. Public package면 불필요하다.
+# imagePullSecrets:
+#   - name: ghcr-market-layer-pull
+
+# Helm -> ArgoCD 인수 시 기존 자동 생성 Secret을 반드시 재사용한다.
+# 이름을 제거하면 ArgoCD 렌더링에서 키가 재생성되어 기존 암호화 데이터와 broker 연결이 깨질 수 있다.
+fernetKeySecretName: airflow-fernet-key
+apiSecretKeySecretName: airflow-api-secret-key
+jwtSecretName: airflow-jwt-secret
+
+# 모든 Airflow 컨테이너에 노출 — Bronze/Silver 태스크(worker)가 parquet 경로로 사용
+env:
+  - name: DATA_LAKE_ROOT
+    value: /opt/airflow/data/lake
+
+# Airflow chart 1.22.0은 extraEnvFrom을 top-level 문자열로만 허용한다.
+# 따라서 이 Secret은 scheduler/webserver/triggerer/worker 등 모든 Airflow 컨테이너에 주입된다.
+# 실제 외부 API 자격증명 사용은 Bronze task(worker)에서만 한다.
+extraEnvFrom: |
+  - secretRef:
+      name: market-layer-api-secret
+
+postgresql:
+  enabled: false        # 외부 PG (host: postgresql.platform.svc.cluster.local, DB: airflow)
+
+redis:
+  enabled: true
+  passwordSecretName: airflow-redis-password
+  persistence:
+    enabled: true
+    size: 1Gi
+
+# ArgoCD 호환: helm hook 비활성 (GitOps 채택 시 필요)
+createUserJob:
+  useHelmHooks: false
+migrateDatabaseJob:
+  useHelmHooks: false
+
+# 메타DB 접속 — 인라인 평문 대신 Secret 참조 (key: connection)
+data:
+  metadataSecretName: airflow-metadata
+  brokerUrlSecretName: airflow-broker-url
+  # postgresql://admin:<pw>@postgresql.platform.svc.cluster.local:5432/airflow
+
+# DAG 동기화 — DAG 파일만 gitSync로 배포한다. import되는 market_layer.* 코드는 이미지에 고정한다.
+dags:
+  gitSync:
+    enabled: true
+    repo: https://github.com/f-lab-edu/Market-Layer-Platform.git
+    branch: develop
+    subPath: src/market_layer/pipelines
+
+# ── 리소스 (라이브 일치), nodeSelector 없음 ──
+# Airflow 3 UI/API는 api-server가 제공하므로 webserver와 별도로 제한한다.
+apiServer:
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits:   { cpu: 500m, memory: 1Gi }
+
+webserver:
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits:   { cpu: 500m, memory: 1Gi }
+
+scheduler:
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits:   { cpu: 500m, memory: 1Gi }
+
+triggerer:
+  persistence:
+    enabled: true
+    size: 100Gi
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 250m, memory: 512Mi }
+
+# CeleryExecutor -> 태스크가 worker에서 실행 -> 데이터 레이크 PVC를 worker에 마운트
+workers:
+  replicas: 1            # RWO 레이크 PVC 전제 (스케일하려면 RWX/MinIO)
+  persistence:
+    enabled: true
+    size: 100Gi
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits:   { cpu: "1", memory: 2Gi }
+  extraVolumes:
+    - name: datalake
+      persistentVolumeClaim:
+        claimName: datalake-pvc
+  extraVolumeMounts:
+    - name: datalake
+      mountPath: /opt/airflow/data
